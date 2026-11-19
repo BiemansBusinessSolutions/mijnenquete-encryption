@@ -16,6 +16,12 @@ declare(strict_types=1);
  *    arrived. No device, address or account is stored with it.
  *  - A survey behind a password carries an unlock token in the form (k). It names the survey and a
  *    time, not a person: everyone who opens it in the same second gets the same token.
+ *  - A survey for allowed email addresses only: the address a respondent types is checked against the
+ *    owner's list and then only kept as a keyed hash, different per survey: for 15 minutes (14 days for
+ *    an invitation) next to the code, and, once it has answered, permanently without a time, only to say
+ *    "you have already filled this in". So Mijn Enquête can tell which allowed addresses answered, but not
+ *    which answer is whose; the owner sees neither. The code goes out through Brevo (France), which gets
+ *    the address and the code to deliver the mail.
  *
  * Not in this file: what the web server and Cloudflare log about requests. See PROTOCOL.md.
  */
@@ -212,6 +218,230 @@ function unlock_token_ok(array $survey, string $token): bool
     return hash_equals(unlock_token($survey, $at), $token);
 }
 
+/* --- A survey for allowed addresses only ------------------------------------------ */
+
+/** One address however it is typed: no spaces around it, lower case. */
+function email_normal(string $email): string
+{
+    return strtolower(trim($email));
+}
+
+/**
+ * How an address is kept: a keyed hash, different for every survey, so the same person cannot be
+ * followed from one survey to another and the address cannot be read back.
+ */
+function email_hash(int $surveyId, string $email): string
+{
+    return substr(hash_hmac('sha256', $surveyId . '|' . email_normal($email), app_key('email')), 0, 32);
+}
+
+/** Is the address on the list, or its domain (written as @domain)? Subdomains do not count. */
+function email_allowed_in(array $allowed, string $email): bool
+{
+    $email = email_normal($email);
+    $at = strrpos($email, '@');
+    if ($at === false || $at === 0) return false;
+    return in_array($email, $allowed, true) || in_array(substr($email, $at), $allowed, true);
+}
+
+function email_access_on(array $survey): bool
+{
+    return (int)($survey['email_access'] ?? 0) === 1;
+}
+
+/** A requested code works 15 minutes; one in an invitation 14 days. Five tries per code. */
+const CODE_TTL = 900;
+const INVITE_CODE_TTL = 14 * 86400;
+const CODE_ATTEMPTS = 5;
+
+function code_hash(int $surveyId, string $emailHash, string $code): string
+{
+    return hash_hmac('sha256', "$surveyId|$emailHash|$code", app_key('code'));
+}
+
+/** A new 6-digit code. It is only stored (save_survey_code) once the mail with it was accepted. */
+function new_survey_code(): string
+{
+    return str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+}
+
+/**
+ * At most three requested codes per address per hour. The count is kept in the code's own row, which is
+ * deleted when the code is used, so nothing with the address's hash and a time outlives the answer.
+ * Returns the new row's count and window, or null when the limit is reached.
+ */
+function code_window(?array $row, int $now): ?array
+{
+    if ($row === null || (int)$row['window_end'] <= $now) return ['sends' => 1, 'window_end' => $now + 3600];
+    if ((int)$row['sends'] >= 3) return null;
+    return ['sends' => (int)$row['sends'] + 1, 'window_end' => (int)$row['window_end']];
+}
+
+function survey_code_row(int $surveyId, string $emailHash): ?array
+{
+    return row('SELECT sends, window_end FROM survey_codes WHERE survey_id = ? AND email_hash = ?', [$surveyId, $emailHash]);
+}
+
+/** Store the address's code; it replaces the one before. */
+function save_survey_code(int $surveyId, string $emailHash, string $code, int $ttl, array $window): void
+{
+    q('REPLACE INTO survey_codes (survey_id, email_hash, code_hash, expires_at, attempts, sends, window_end) VALUES (?, ?, ?, ?, 0, ?, ?)',
+        [$surveyId, $emailHash, code_hash($surveyId, $emailHash, $code), time() + $ttl, $window['sends'], $window['window_end']]);
+}
+
+/** Is this the address's code? A right code is used up; every try counts, right or wrong. */
+function check_survey_code(int $surveyId, string $emailHash, string $code): bool
+{
+    q('UPDATE survey_codes SET attempts = LEAST(attempts + 1, 255) WHERE survey_id = ? AND email_hash = ?', [$surveyId, $emailHash]);
+    $row = row('SELECT code_hash, expires_at, attempts FROM survey_codes WHERE survey_id = ? AND email_hash = ?', [$surveyId, $emailHash]);
+    if (!$row || (int)$row['attempts'] > CODE_ATTEMPTS || (int)$row['expires_at'] < time()) return false;
+    if (!hash_equals($row['code_hash'], code_hash($surveyId, $emailHash, preg_replace('/\D/', '', $code)))) return false;
+    q('DELETE FROM survey_codes WHERE survey_id = ? AND email_hash = ?', [$surveyId, $emailHash]);
+    return true;
+}
+
+/**
+ * Like unlock_token, for someone who typed the code from their mail. It names the address's hash, so
+ * the answer can be counted against that address once; it is never stored with the answer.
+ */
+function email_token(array $survey, string $emailHash, ?int $at = null): string
+{
+    $at ??= time();
+    return "$at.$emailHash." . substr(hash_hmac('sha256', $survey['id'] . "|$emailHash|$at", app_key('unlock-email')), 0, 32);
+}
+
+/** The address's hash, when the token is valid. */
+function email_token_hash(array $survey, string $token): ?string
+{
+    if (!preg_match('/^(\d{1,12})\.([a-f0-9]{32})\.[a-f0-9]{32}$/', $token, $m)) return null;
+    $at = (int)$m[1];
+    if ($at > time() + 60 || $at < time() - UNLOCK_TTL) return null;
+    return hash_equals(email_token($survey, $m[2], $at), $token) ? $m[2] : null;
+}
+
+/** The code a respondent asked for, through Brevo, in the language they see the site in. */
+function mail_respondent_code(array $survey, array $owner, string $email, string $code): bool
+{
+    $heading = t('Je code voor “{title}”', ['title' => $survey['title']]);
+    $intro = t('Vul deze code in om de enquête van {name} te openen.', ['name' => $owner['display_name']]);
+    $outro = t('De code is 15 minuten geldig. Heb je dit niet aangevraagd? Dan hoef je niets te doen.');
+    $box = '<div style="font-size:32px;font-weight:bold;letter-spacing:4px;background:#ffd23f;padding:14px 18px;display:inline-block">{{ params.code }}</div>';
+    return send_survey_mail(brevo_payload(brevo_sender(), null, t('{code} is je code voor Mijn Enquête', ['code' => '{{ params.code }}']),
+        "$heading\n\n$intro\n\n{{ params.code }}\n\n$outro\n", mail_html($heading, $intro, $box, $outro),
+        [['to' => email_normal($email), 'params' => ['code' => $code]]]));
+}
+
+/**
+ * What the gate does with an address: 'request' (send me a code), 'have_code' (I have one from an
+ * invitation) or 'code' (here it is). An address that is not, or no longer, on the list gets nothing.
+ * An address that already answered gets the same "check your mail" page as any other, but no mail: the
+ * gate must not tell anyone, the owner included, which addresses have answered.
+ */
+function email_gate_step(string $kind, bool $allowed, bool $answered): string
+{
+    if (!$allowed) return 'refused';
+    if ($kind === 'code') return 'check';
+    return $kind === 'request' && !$answered ? 'send' : 'show-code';
+}
+
+/**
+ * The gate in front of a survey for allowed addresses only. Returns the unlock token once the visitor
+ * typed a right code; otherwise shows the page for the step they are at, and does not return.
+ */
+function email_gate(array $survey, array $owner, array $base): string
+{
+    $id = (int)$survey['id'];
+    $view = fn(string $state, array $more = [], int $status = 200) =>
+        view('survey-email', $base + ['state' => $state, 'email' => '', 'error' => null] + $more, 'survey', $status);
+    // Mail costs money: only a premium survey sends codes. Without that it stays shut, never open to all.
+    if (!survey_is_paid($survey, $owner)) $view('unavailable');
+
+    $token = $_POST['k'] ?? $_GET['k'] ?? '';
+    if (is_string($token) && email_token_hash($survey, $token) !== null) return $token;
+    if (!is_post()) $view('ask');
+
+    $email = email_normal(post('email', 190));
+    if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+        $view('ask', ['error' => t('Vul een geldig e-mailadres in, zoals naam@voorbeeld.nl.'), 'email' => $email], 422);
+    }
+    $kind = isset($_POST['code']) ? 'code' : (isset($_POST['have_code']) ? 'have_code' : 'request');
+    // Counted before anything is looked up, so the list cannot be tried address by address.
+    if ($kind === 'code' && !rate_ok(ip_key('code-check:' . $id), 30, 900)) {
+        $view('code', ['email' => $email, 'error' => t('Er is te vaak een verkeerde code geprobeerd. Probeer het later opnieuw.')], 429);
+    }
+    if ($kind !== 'code' && !rate_ok(ip_key('code:' . $id), 20, 900)) {
+        $view('ask', ['email' => $email, 'error' => t('Er zijn te veel codes aangevraagd. Probeer het later opnieuw.')], 429);
+    }
+    $hash = email_hash($id, $email);
+    $answered = $kind === 'request'
+        && (bool)val('SELECT 1 FROM survey_answered_emails WHERE survey_id = ? AND email_hash = ?', [$id, $hash]);
+
+    switch (email_gate_step($kind, email_allowed_in(allowlist_of($id), $email), $answered)) {
+        case 'refused':
+            $view('refused', ['email' => $email], 403);
+        case 'show-code':
+            $view('code', ['email' => $email]);
+        case 'check':
+            if (!check_survey_code($id, $hash, post('code', 20))) {
+                $view('code', ['email' => $email, 'error' => t('Deze code klopt niet of is verlopen. Vraag een nieuwe code aan.')], 422);
+            }
+            $_POST = []; // the code form is not an answer
+            return email_token($survey, $hash);
+    }
+    // 'send'
+    $window = code_window(survey_code_row($id, $hash), time());
+    if ($window === null) $view('ask', ['email' => $email, 'error' => t('Er zijn te veel codes aangevraagd. Probeer het later opnieuw.')], 429);
+    if (mail_used((int)$owner['id'], 'codes') >= CODES_PER_DAY) $view('full', ['email' => $email], 429);
+    $code = new_survey_code();
+    if (!mail_respondent_code($survey, $owner, $email, $code)) {
+        $view('ask', ['email' => $email, 'error' => t('De code kon nu niet worden verstuurd. Probeer het later opnieuw.')], 503);
+    }
+    save_survey_code($id, $hash, $code, CODE_TTL, $window);
+    mail_count((int)$owner['id'], 'codes', 1);
+    $view('code', ['email' => $email]);
+}
+
+/**
+ * Count the answer against the address, once. False when it had already answered. Called before the
+ * answer is stored; release_email_answer() undoes it when the answer is refused after all.
+ */
+function claim_email_answer(array $survey, string $emailHash): bool
+{
+    return q('INSERT IGNORE INTO survey_answered_emails (survey_id, email_hash) VALUES (?, ?)', [$survey['id'], $emailHash])->rowCount() === 1;
+}
+
+function release_email_answer(array $survey, string $emailHash): void
+{
+    q('DELETE FROM survey_answered_emails WHERE survey_id = ? AND email_hash = ?', [$survey['id'], $emailHash]);
+}
+
+/** Store the answer; when that fails, the address may answer again ($release), so nobody is locked out. */
+function store_with_claim(callable $store, callable $release): void
+{
+    try {
+        $store();
+    } catch (Throwable $ex) {
+        $release();
+        throw $ex;
+    }
+}
+
+/**
+ * Where to go after an answer. With an email token, nowhere: the token names the address's hash, and a
+ * URL ends up in request logs and browser history with a time. The thanks page is shown right away.
+ */
+function after_answer_url(string $action, ?string $unlock, bool $byEmail): ?string
+{
+    if ($byEmail) return null;
+    return $action . '?verstuurd=1' . ($unlock ? '&k=' . rawurlencode($unlock) : '');
+}
+
+/** The page title before the survey opens: it shows in tabs and link previews. */
+function gate_title(bool $password, bool $email): string
+{
+    return $email ? t('Enquête voor genodigden') : t('Enquête met wachtwoord');
+}
+
 /* --- Answering ------------------------------------------------------------------------ */
 
 function show_survey(array $survey, array $owner): never
@@ -222,11 +452,12 @@ function show_survey(array $survey, array $owner): never
     if ($survey['status'] === 'draft' && !$isOwner) not_found();
 
     $questions = survey_questions((int)$survey['id']);
-    $locked = survey_password($survey) !== null;
+    $byEmail = email_access_on($survey);
+    $locked = survey_password($survey) !== null || $byEmail;
     // A survey behind a password shows nothing of itself in a link preview.
     $encrypted = survey_encrypted($survey);
     $ownerKey = $encrypted ? e2e_current_key((int)$owner['id']) : null;
-    $base = ['title' => $locked ? t('Enquête met wachtwoord') : $survey['title'], 'survey' => $survey, 'encrypted' => $encrypted,
+    $base = ['title' => $locked ? gate_title(survey_password($survey) !== null, $byEmail) : $survey['title'], 'survey' => $survey, 'encrypted' => $encrypted,
         'description' => $locked || $survey['description'] === ''
             ? t('Een enquête van {name} op Mijn Enquête.', ['name' => $owner['display_name']]) : $survey['description'],
         'owner' => $owner, 'isOwner' => $isOwner, 'ownerEmail' => mask_email($owner['email']),
@@ -235,7 +466,7 @@ function show_survey(array $survey, array $owner): never
     if ($survey['status'] === 'closed') view('survey-closed', $base, 'survey');
 
     // Only the owner, or someone who typed the password, sees the questions.
-    if ($locked && !$isOwner) {
+    if (survey_password($survey) !== null && !$isOwner) {
         $token = $_POST['k'] ?? $_GET['k'] ?? '';
         $token = is_string($token) ? $token : '';
         $error = null;
@@ -254,7 +485,18 @@ function show_survey(array $survey, array $owner): never
         $base['title'] = $survey['title'];
     }
 
+    // Only the owner, or someone who typed the code from their mail, sees the questions.
+    $emailHash = null;
+    if ($byEmail && !$isOwner) {
+        $base['unlock'] = email_gate($survey, $owner, $base);
+        $base['title'] = $survey['title'];
+        $emailHash = email_token_hash($survey, $base['unlock']);
+    }
+
     if (isset($_GET['verstuurd'])) view('survey-thanks', $base, 'survey');
+    if ($emailHash !== null && val('SELECT 1 FROM survey_answered_emails WHERE survey_id = ? AND email_hash = ?', [$survey['id'], $emailHash])) {
+        view('survey-done', $base + ['byEmail' => true], 'survey');
+    }
     // One answer per device, unless the owner allows more (the owner may always test).
     $onePerDevice = (int)$survey['one_per_device'] === 1 && !$isOwner;
     if ($onePerDevice && device_answered($survey)) view('survey-done', $base, 'survey');
@@ -274,21 +516,35 @@ function show_survey(array $survey, array $owner): never
             if ($problem = encrypted_submission_problem($_POST, $ownerKey)) {
                 $errors[0] = $problem;
             } else {
+                if ($emailHash !== null && !claim_email_answer($survey, $emailHash)) view('survey-done', $base + ['byEmail' => true], 'survey');
                 $device = claim_device_answer($survey, $isOwner);
-                if (!$device['allowed']) view('survey-done', $base, 'survey');
-                store_sealed_response((int)$survey['id'], trim($_POST['sealed']), $ownerKey['id']);
+                if (!$device['allowed']) {
+                    if ($emailHash !== null) release_email_answer($survey, $emailHash);
+                    view('survey-done', $base, 'survey');
+                }
+                store_with_claim(fn() => store_sealed_response((int)$survey['id'], trim($_POST['sealed']), $ownerKey['id']),
+                    function () use ($survey, $emailHash) { if ($emailHash !== null) release_email_answer($survey, $emailHash); });
                 note_response_activity($survey, $device, $isOwner);
-                redirect($base['action'] . '?verstuurd=1' . ($base['unlock'] ? '&k=' . rawurlencode($base['unlock']) : ''));
+                $next = after_answer_url($base['action'], $base['unlock'], $emailHash !== null);
+                if ($next === null) view('survey-thanks', $base, 'survey');
+                redirect($next);
             }
         } else {
             [$answers, $errors] = collect_answers($questions, $posted);
             if (!$errors && !$answers) $errors[0] = t('Je hebt nog niets ingevuld.');
             if (!$errors) {
+                if ($emailHash !== null && !claim_email_answer($survey, $emailHash)) view('survey-done', $base + ['byEmail' => true], 'survey');
                 $device = claim_device_answer($survey, $isOwner);
-                if (!$device['allowed']) view('survey-done', $base, 'survey');
-                store_response((int)$survey['id'], $answers);
+                if (!$device['allowed']) {
+                    if ($emailHash !== null) release_email_answer($survey, $emailHash);
+                    view('survey-done', $base, 'survey');
+                }
+                store_with_claim(fn() => store_response((int)$survey['id'], $answers),
+                    function () use ($survey, $emailHash) { if ($emailHash !== null) release_email_answer($survey, $emailHash); });
                 note_response_activity($survey, $device, $isOwner);
-                redirect($base['action'] . '?verstuurd=1' . ($base['unlock'] ? '&k=' . rawurlencode($base['unlock']) : ''));
+                $next = after_answer_url($base['action'], $base['unlock'], $emailHash !== null);
+                if ($next === null) view('survey-thanks', $base, 'survey');
+                redirect($next);
             }
         }
     }

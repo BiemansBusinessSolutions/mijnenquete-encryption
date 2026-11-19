@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceRevision": "af3145669003e50b1b033ca2d51abc3e149da53b",
+  "sourceRevision": "0269d61a33ec5458d19feff6a4044d148c9b0ea8",
   "preview": false,
   "files": {
     ".gitattributes": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992",
@@ -9,12 +9,12 @@
     "assets/survey.js": "2d891119844393aab968900d8dd602eb4be4ebd9012bbc63fd1bce910c7a895b",
     "assets/vault.js": "24f8e0add7a39c54afd21375abe877ca602ca724cd93fde74a775515215aadd9",
     "LICENSE": "b56d897e78d7ebc573247fcff8ab2cb05d2416b569851184b18995c2346f45a2",
-    "PROTOCOL.md": "0c245b1c6756b4c1ae5988d8bd46422d7adca7e97c43e58861ad701107d55b06",
+    "PROTOCOL.md": "6593d9f25865d33a292e33e78aaa65af064b9d47faef928d7808589678f1aee5",
     "README.md": "8a1a100108ddb726f89ec3dbc820602ca6b001b708452fcadd0b7b927c69eae3",
     "SECURITY.md": "83675e7103bcd28c9eb4829725b7f8c15e0410279d9eea013b6fdbb22bdf18f9",
     "src/e2e.php": "2fa74c5b4e26a14ee29e2a426a828046cbbc55b88b64c6a4ccedc0c8960b93db",
     "src/pages/encryption.php": "edd9a5a3b680f790a749e92497f1ac9f41cee197117f66761cde0d4bb4deed58",
-    "src/respond.php": "5588f2317621cb881edabc089d74a43cc9602f996a678a6fef27096270b90e55",
+    "src/respond.php": "787245befd6aaa8b5f00ec590430f5d50a1e77be1f54045899cfae203e149515",
     "src/views/survey.php": "8435297d7b20e1370d9bb470b7d1f3989de7b311983f5dc81b76915d5eaee378",
     "tests/encryption.test.cjs": "b7a9dbba5ccedaf3fd7a9dde171d488f9568d8c83b22cdd1abdceecdef2ccac7"
   }

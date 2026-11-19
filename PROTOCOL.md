@@ -86,6 +86,16 @@ device unlock key. Losing all of these can make older answers inaccessible.
   address or account is stored with it.
 - **Unlock token (`k`):** for a survey behind a password. It names the survey and a
   time, not a person; there are no personal invitation links.
+- **Email address:** only for a survey limited to allowed email addresses (a paid
+  feature). The address the respondent types is checked against the owner's list and
+  then kept only as a keyed hash, different per survey: next to a one-time code for
+  15 minutes (14 days for an invitation), and, once that address has answered,
+  without a time and without an auto-increment key (`survey_answered_emails`), only to
+  say "already answered". The unlock token for this mode names the survey, the hash
+  and a time; it is never stored with the answer. So the operator can tell which
+  allowed addresses answered, but not which answer is whose. The owner sees neither.
+  Invitations and codes are delivered by Brevo (France), which receives the address
+  and the code.
 
 Outside this code: the web host and Cloudflare keep request logs (time, IP
 address, requested path) under their own retention. Together with an answer's
