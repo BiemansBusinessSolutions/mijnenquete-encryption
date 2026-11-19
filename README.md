@@ -9,17 +9,21 @@ does not license the rest of the application.
 
 - `assets/e2e.js`: Web Crypto, password derivation, private-key wrapping and backup recovery.
 - `assets/survey.js`: respondent validation, capability check and encrypted submission.
-- `assets/password.js` and `assets/vault.js`: authentication integration, key lifecycle,
-  local decryption, results and CSV export.
+- `assets/password.js` and `assets/vault.js`: password stretching for every password form,
+  key lifecycle, local decryption, results and CSV export. Account password fields arrive
+  disabled and are enabled only by these files, so the password itself is never submitted.
 - `src/e2e.php`: formats, storage of ciphertext/locked keys, and the server acceptance
   policy: `encrypted_submission_problem()` rejects every encrypted-survey submission
   that is not a single well-formed sealed blob, before anything is stored.
+- `src/respond.php`: everything a respondent's visit touches on the server: the
+  submission handler, the "already answered" device cookie, IP-address handling for
+  rate limits, and the unlock token of a survey behind a password.
 - `src/pages/encryption.php`: authenticated key and ciphertext endpoints.
 - `src/views/survey.php`: the respondent form, hidden and disabled by default for
   encrypted surveys until a trial encryption succeeds.
+- `tests/encryption.test.cjs`: runnable checks using the actual browser crypto file.
 
 These are complete source files, not rewritten examples.
-- `tests/encryption.test.cjs`: runnable checks using the actual browser crypto file.
 
 The PHP files depend on the private application's helpers and database; this
 export is not a runnable PHP application or a complete authentication review.

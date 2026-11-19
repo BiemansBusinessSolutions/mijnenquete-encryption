@@ -2,8 +2,10 @@
  * Signing in, signing up and choosing a new password, without the password leaving this browser.
  * The password is stretched here (e2e.js) into a login value, which is sent instead, and an unlock key,
  * which stays here so the owner's encryption keys open without asking again (vault.js).
- * Without JavaScript or Web Crypto the forms send the password itself and the server does the same
- * stretching (src/auth.php), so nothing here is needed for the forms to work.
+ * The password fields come disabled from the server, so they are never submitted as typed. This file
+ * enables them only once it has taken over the form; without it (no JavaScript, no Web Crypto) they stay
+ * disabled and the page says why. When stretching fails, nothing is sent. The one exception is an account
+ * from before (pw_v 0), whose first sign-in sends the password once so the server can upgrade its hash.
  */
 (() => {
   const E = globalThis.MijnE2E;
@@ -30,7 +32,7 @@
     button.textContent = on ? T('Even geduld…') : button.dataset.label;
   }
 
-  /** The same rules as password_problem() in src/auth.php, which cannot check a password it never gets. */
+  /** The password rules. Only checked here: the server never gets the password to check. */
   function problem(password, notLike) {
     const n = [...password].length;
     if (n < 10) return T('Kies een wachtwoord van minstens 10 tekens.');
@@ -103,6 +105,17 @@
 
   if (!E || !E.supported) return;
 
+  const FAILED = 'Niet verstuurd: je wachtwoord kon in deze browser niet veilig worden voorbereid. Probeer het opnieuw.';
+
+  /** From here on this file sends the form: the password fields may be typed in. */
+  function takeOver(form) {
+    for (const input of form.querySelectorAll('input[data-needs-crypto]')) {
+      input.disabled = false;
+      const note = input.closest('.field').querySelector('[data-crypto-unavailable]');
+      if (note) note.hidden = true;
+    }
+  }
+
   /** Shown the way field() in _helpers.php shows a server error. */
   function fieldError(input, message) {
     const field = input.closest('.field');
@@ -135,6 +148,7 @@
 
   const login = document.querySelector('form[data-pw="login"]');
   if (login) {
+    takeOver(login);
     login.addEventListener('submit', async (event) => {
       event.preventDefault();
       const input = login.elements.password;
@@ -154,12 +168,16 @@
           return;
         }
         // An account from before: the server checks the password itself once, then stretches it with the same salt.
-      } catch { /* the server stretches the password instead */ }
-      login.submit();
+        login.submit();
+      } catch {
+        busy(login, false);
+        fieldError(input, T(FAILED));
+      }
     });
   }
 
   for (const form of document.querySelectorAll('form[data-pw="new"]')) {
+    takeOver(form);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const input = form.elements.password;
@@ -175,7 +193,8 @@
         hidden(form, 'password_salt', salt);
         send(form, input);
       } catch {
-        form.submit();
+        busy(form, false);
+        fieldError(input, T(FAILED));
       }
     });
   }

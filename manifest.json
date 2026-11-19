@@ -1,19 +1,20 @@
 {
   "version": 1,
-  "sourceRevision": "4bd4f313f78a7215bc5577cd1684a863fb8c1619",
+  "sourceRevision": "9d5885bf1d1a39a9d97afd5cf31d53814c359dcf",
   "preview": false,
   "files": {
     ".gitattributes": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992",
     "assets/e2e.js": "4d954eda9d2e9c9d4ab2cb92db39cce1b321e06c3815a69c79d188b8dfd8ee1d",
-    "assets/password.js": "c7af99d3b27b2c8789acbfa841e2002f91a3dd1618ba8a962cffec16c6b44593",
+    "assets/password.js": "11543c2d7972fe61af5b953d3368d2ad1044b676948bbf0eb5767358120cf952",
     "assets/survey.js": "2d891119844393aab968900d8dd602eb4be4ebd9012bbc63fd1bce910c7a895b",
-    "assets/vault.js": "0d22b3538eb4f6fccd1f4fa5405a8e48617ec6706ef66214c1781cce2c826ad4",
+    "assets/vault.js": "24f8e0add7a39c54afd21375abe877ca602ca724cd93fde74a775515215aadd9",
     "LICENSE": "b56d897e78d7ebc573247fcff8ab2cb05d2416b569851184b18995c2346f45a2",
-    "PROTOCOL.md": "d62ed4b0bec86d7fed4ff729432cea5c68ef288ff765e25b3b57852b0a5cd8c9",
-    "README.md": "09b60c9261fdb93aa757a74732c0a3da197a3872d05ddb46e3b4e934e03d8e1f",
+    "PROTOCOL.md": "0c245b1c6756b4c1ae5988d8bd46422d7adca7e97c43e58861ad701107d55b06",
+    "README.md": "8a1a100108ddb726f89ec3dbc820602ca6b001b708452fcadd0b7b927c69eae3",
     "SECURITY.md": "83675e7103bcd28c9eb4829725b7f8c15e0410279d9eea013b6fdbb22bdf18f9",
     "src/e2e.php": "456cc45f33a6df1f61cb41db9353f3f323deaf2edd6e6804300eb93d2cadb5a8",
     "src/pages/encryption.php": "edd9a5a3b680f790a749e92497f1ac9f41cee197117f66761cde0d4bb4deed58",
+    "src/respond.php": "5588f2317621cb881edabc089d74a43cc9602f996a678a6fef27096270b90e55",
     "src/views/survey.php": "2dd8826af7431895ad61c5eef108cbac9f0296f5465bca0b4d5bd5e3505143dd",
     "tests/encryption.test.cjs": "b7a9dbba5ccedaf3fd7a9dde171d488f9568d8c83b22cdd1abdceecdef2ccac7"
   }

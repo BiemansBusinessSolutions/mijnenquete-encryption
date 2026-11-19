@@ -43,13 +43,18 @@ The server adds an outer AES-GCM layer using its own application key to the
 already-wrapped private keys. That extra layer is defense in depth, not the
 end-to-end protection; its key is not published.
 
-**Authentication fallback still exists:** without supported browser scripting,
-login/password forms may send the account password over HTTPS and the server
-derives the login value. Legacy account upgrades can also send the password.
-Because the password derives the unlock key, this is a trust limitation: do not
-interpret this design as the server being technically unable to obtain unlock
-material under all login scenarios. Changing respondent submission does not
-remove that separate authentication behaviour.
+**Passwords are not sent.** Every form that takes the account password (sign-in,
+sign-up, reset, password change and password confirmations) sends only the login
+value. The password fields arrive disabled, so a browser without JavaScript or Web
+Crypto cannot submit them; `password.js` and `vault.js` enable them only once they
+handle the form, and show an error instead of submitting when derivation fails. The
+server accepts no password in place of a login value and has no server-side
+derivation for new passwords. One exception remains: an account created before
+browser-side derivation (`pw_v` 0) sends its password once, at its first sign-in,
+so the server can verify and upgrade its stored hash. Such an account has no
+encryption keys until after that upgrade. This removes accidental exposure, not
+the trust limit below: the service still delivers the JavaScript that handles the
+password.
 
 ## Recovery
 
@@ -62,6 +67,31 @@ additional data `mijnenquete-key-v1:<owner public key>`.
 Password changes rewrap keys in the browser. A password reset permits a new
 key for new answers; old keys need the old password, backup code, or a retained
 device unlock key. Losing all of these can make older answers inaccessible.
+
+## What is kept about respondents
+
+`src/respond.php` holds the whole server side of a respondent's visit.
+
+- **IP address:** never stored. It is counted against floods as a keyed hash in a
+  rate-limit row that expires with its window (at most an hour for answering).
+- **Device cookie:** after answering, the browser receives one random 128-bit code.
+  The server stores only a keyed hash per survey (`survey_devices`), without a time,
+  to recognise "already answered". Accounts store a differently keyed hash of the
+  devices they sign in on, with only the day (`user_devices`). Without the cookie
+  itself these values cannot be matched to each other, across surveys, or to an
+  answer. Rows written before 2026-11-19 used one hash for every survey; they can
+  still show that one device answered several surveys, but no longer link to
+  accounts.
+- **Answer:** the sealed blob, the survey and the time it arrived. No device,
+  address or account is stored with it.
+- **Unlock token (`k`):** for a survey behind a password. It names the survey and a
+  time, not a person; there are no personal invitation links.
+
+Outside this code: the web host and Cloudflare keep request logs (time, IP
+address, requested path) under their own retention. Together with an answer's
+arrival time, those logs can show which address submitted to which survey. A
+signed-in respondent's session is also touched by the request. This is metadata
+about who took part, not answer content.
 
 ## What publication cannot prove
 

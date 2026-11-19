@@ -259,9 +259,12 @@
   }
 
   /* --- Forms that ask for the password ---------------------------------------
-   * The login value goes to the server instead; the password field itself is not sent. */
+   * The login value goes to the server instead; the password field itself is never sent. The fields come
+   * disabled from the server and are enabled only once this file handles their form (see below). */
 
-  /** Problems with a new password: the rules of password_problem() in src/auth.php. */
+  const FAILED = 'Niet verstuurd: je wachtwoord kon in deze browser niet veilig worden voorbereid. Probeer het opnieuw.';
+
+  /** Problems with a new password. Only checked here: the server never gets the password to check. */
   function passwordProblem(password, notLike) {
     if ([...password].length < 10) return T('Kies een wachtwoord van minstens 10 tekens.');
     if (new TextEncoder().encode(password).length > 200) return T('Kies een wachtwoord van hoogstens 200 tekens.');
@@ -316,7 +319,11 @@
       busy(button, T('Even geduld…'));
       try {
         if (!(await confirmPassword(form))) { busy(button, null); return; }
-      } catch { /* the server checks the password itself */ }
+      } catch {
+        busy(button, null);
+        formError(form, T(FAILED));
+        return;
+      }
       send(form);
     });
   }
@@ -345,13 +352,12 @@
         hidden(form, 'password_salt', salt);
         await E.store('w', salt, next.unlock);
       } catch {
-        // Without the new values the server stretches the password itself; the keys then stay locked with
-        // the old one, and the account page asks for it once.
         for (const name of ['current_password_auth', 'password_auth', 'password_salt', 'rewrap']) {
           const h = form.querySelector(`input[type=hidden][name="${name}"]`);
           if (h) h.remove();
         }
-        form.submit();
+        busy(button, null);
+        formError(form, T(FAILED));
         return;
       }
       send(form);
@@ -437,6 +443,12 @@
       if (form.matches('[data-vault-backup]')) backupForm(form);
       else if (form.matches('[data-vault-password]')) passwordForm(form);
       else if (form.elements.current_password) confirmForm(form);
+      else continue;
+      for (const input of $$('input[data-needs-crypto]', form)) {
+        input.disabled = false;
+        const note = $('[data-crypto-unavailable]', input.closest('.field'));
+        if (note) note.hidden = true;
+      }
     }
   } else {
     $$('[data-vault-browser]').forEach((n) => { n.textContent = T(BROWSER); n.hidden = false; });
