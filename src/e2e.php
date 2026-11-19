@@ -82,7 +82,7 @@ function encrypted_submission_problem(array $post, ?array $ownerKey): ?string
 {
     if ($ownerKey === null) return t('Deze enquête kan nog geen versleutelde antwoorden ontvangen. Vraag de maker om in te loggen en de versleuteling klaar te zetten.');
     if (array_key_exists('q', $post) || !isset($post['sealed'])) {
-        return t('Niet verstuurd: deze enquête accepteert alleen antwoorden die op jouw apparaat zijn versleuteld. Zet JavaScript aan of open de link in een recente browser.');
+        return t('Niet verstuurd: deze enquête neemt alleen antwoorden aan die op jouw apparaat op slot zijn gedaan. Open de link in een recente browser, zoals Firefox, Chrome, Edge of Safari.');
     }
     if (!is_string($post['sealed']) || !sealed_ok(trim($post['sealed']))) {
         return t('Je antwoorden konden niet worden versleuteld. Vernieuw de pagina en probeer het opnieuw.');

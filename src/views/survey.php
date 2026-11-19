@@ -26,9 +26,9 @@ $n = 0;
     <?php if ($publicKey === null): ?>
     <p><?= e(t('Deze enquête kan nog geen versleutelde antwoorden ontvangen. Vraag de maker om in te loggen en de versleuteling klaar te zetten.')) ?></p>
     <?php else: ?>
-    <p><?= e(t('Deze enquête versleutelt je antwoorden op jouw apparaat, zodat alleen de maker ze kan openen. Zolang dat niet lukt, kun je de enquête niet invullen. We versturen je antwoorden niet onversleuteld.')) ?></p>
-    <p><?= e(t('Zet JavaScript aan voor deze site of open de link in een recente versie van Firefox, Chrome, Edge of Safari. Gebruik je de browser in een andere app? Open de link dan in je gewone browser.')) ?></p>
-    <noscript><p><?= e(t('JavaScript staat uit of is niet beschikbaar. Zet het aan en laad deze pagina opnieuw om de enquête veilig in te vullen.')) ?></p></noscript>
+    <p><?= e(t('Deze enquête doet je antwoorden op jouw apparaat op slot, zodat alleen de maker ze kan openen. Zolang dat in deze browser niet lukt, kun je de enquête niet invullen: zonder slot versturen we niets.')) ?></p>
+    <p><?= e(t('Open de link in een recente browser, zoals Firefox, Chrome, Edge of Safari. Zit je in een andere app, zoals je mail of een chatapp? Open de link dan in je gewone browser.')) ?></p>
+    <noscript><p><?= e(t('In je browser staat JavaScript uit. Zet het aan in de instellingen van je browser en laad deze pagina opnieuw.')) ?></p></noscript>
     <?php endif ?>
   </div>
   <?php endif ?>
