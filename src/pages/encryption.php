@@ -96,10 +96,11 @@ function page_survey_data(string $id): never
     if (!$user) json_out(['error' => t('Je bent uitgelogd.')], 401);
     $survey = row('SELECT * FROM surveys WHERE public_id = ? AND user_id = ?', [$id, $user['id']]);
     if (!$survey) json_out(['error' => t('Deze enquête bestaat niet meer.')], 404);
-    $questions = survey_questions((int)$survey['id']);
+    // Retired questions too: their answers stay in the results and the download, marked as removed.
+    $questions = survey_questions((int)$survey['id'], true);
     json_out([
         'survey' => (int)$survey['id'],
-        'questions' => array_map(fn($q) => ['id' => $q['id'], 'type' => $q['type'], 'title' => $q['title'],
+        'questions' => array_map(fn($q) => ['id' => $q['id'], 'type' => $q['type'], 'title' => $q['title'], 'retired' => $q['retired'],
             'choices' => $q['options']['choices'] ?? [], 'min' => (int)($q['options']['min'] ?? 1), 'max' => (int)($q['options']['max'] ?? 10)], $questions),
         'responses' => array_map(fn($r) => $r + ['date' => fmt_date($r['at']), 'time' => fmt_time($r['at']), 'stamp' => date('Y-m-d H:i', $r['at'])],
             survey_response_data((int)$survey['id'], $questions)),

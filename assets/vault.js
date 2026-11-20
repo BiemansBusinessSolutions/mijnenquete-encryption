@@ -570,6 +570,9 @@
     route();
   }
 
+  /* A question's title, marked when it was removed from the survey (question_heading() in src/surveys.php). */
+  const heading = (q) => (q.retired ? q.title + ' (' + T('verwijderd') + ')' : q.title);
+
   /* The same summary as survey_results() in src/surveys.php. */
   function summarise(q) {
     const r = { answered: 0, kind: 'text', bars: [], average: null, texts: [] };
@@ -628,7 +631,7 @@
     const list = el('ol', { class: 'result-list' });
     for (const q of data.questions) {
       const r = summarise(q);
-      const item = el('li', { class: 'result' }, el('h2', { text: q.title }),
+      const item = el('li', { class: 'result' }, el('h2', { text: heading(q) }),
         el('p', { class: 'muted', text: T('{type}, {n} van {total} beantwoord', { type: boot.types[q.type] || q.type, n: r.answered, total }) }));
       if (r.kind === 'text') {
         if (!r.texts.length) item.append(el('p', { class: 'muted', text: T('Niemand heeft deze vraag ingevuld.') }));
@@ -685,7 +688,7 @@
     const dl = el('dl', { class: 'one-response' });
     data.questions.forEach((q, i) => {
       const text = shown(q, p.answers[q.id]);
-      dl.append(el('div', {}, el('dt', {}, el('span', { class: 'q-n', 'aria-hidden': 'true', text: String(i + 1) }), ' ', q.title),
+      dl.append(el('div', {}, el('dt', {}, el('span', { class: 'q-n', 'aria-hidden': 'true', text: String(i + 1) }), ' ', heading(q)),
         el('dd', { class: text === null ? 'muted' : null }, text === null ? T('Niet ingevuld') : lines(text))));
     });
     box.append(dl);
@@ -715,7 +718,7 @@
   const csvSafe = (v) => (/^[=+\-@\t\r]/.test(v) ? "'" + v : v);
   const csvCell = (v) => (/[;"\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v);
   $('[data-vault-csv]').addEventListener('click', () => {
-    const rows = [[T('Ingevuld op'), ...data.questions.map((q) => csvSafe(q.title))]];
+    const rows = [[T('Ingevuld op'), ...data.questions.map((q) => csvSafe(heading(q)))]];
     for (const p of [...people].reverse()) {
       rows.push([p.stamp, ...data.questions.map((q) => {
         const v = p.answers[q.id];

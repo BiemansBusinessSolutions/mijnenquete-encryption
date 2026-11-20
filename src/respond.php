@@ -354,7 +354,7 @@ function email_gate(array $survey, array $owner, array $base): string
     $view = fn(string $state, array $more = [], int $status = 200) =>
         view('survey-email', $base + ['state' => $state, 'email' => '', 'error' => null] + $more, 'survey', $status);
     // Mail costs money: only a premium survey sends codes. Without that it stays shut, never open to all.
-    if (!survey_is_paid($survey, $owner)) $view('unavailable');
+    if (!premium_active($survey, $owner)) $view('unavailable');
 
     $token = $_POST['k'] ?? $_GET['k'] ?? '';
     if (is_string($token) && email_token_hash($survey, $token) !== null) return $token;
@@ -464,6 +464,8 @@ function show_survey(array $survey, array $owner): never
         'action' => survey_path($survey, $owner['username']), 'unlock' => null];
 
     if ($survey['status'] === 'closed') view('survey-closed', $base, 'survey');
+    // Premium features without a subscription: no answers (GET and POST), until the owner fixes it.
+    if (premium_restricted($survey, $owner, $questions)) view('survey-closed', $base + ['restricted' => true], 'survey');
 
     // Only the owner, or someone who typed the password, sees the questions.
     if (survey_password($survey) !== null && !$isOwner) {
