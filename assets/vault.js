@@ -467,7 +467,7 @@
     return;
   }
 
-  const lang = { nl: 'nl-NL', en: 'en-GB', fr: 'fr-FR' }[boot.lang] || 'nl-NL';
+  const lang = { nl: 'nl-NL', en: 'en-GB', fr: 'fr-FR', de: 'de-DE' }[boot.lang] || 'nl-NL';
   const decimal = new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const day = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', year: 'numeric' });
   const showDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? day.format(new Date(v + 'T12:00:00')) : v);
