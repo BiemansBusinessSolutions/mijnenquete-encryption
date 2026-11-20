@@ -573,10 +573,20 @@
   /* A question's title, marked when it was removed from the survey (question_heading() in src/surveys.php). */
   const heading = (q) => (q.retired ? q.title + ' (' + T('verwijderd') + ')' : q.title);
 
+  /* Whether an answer has the shape the question's type gives. Before questions were retired on a type
+     change (10f0433), a question's type could change under answers it already had; those stay readable
+     as plain text per person but are left out of the summary. */
+  function fits(q, v) {
+    if (q.type === 'multi') return Array.isArray(v);
+    if (Array.isArray(v)) return false;
+    if (q.type === 'stars' || q.type === 'scale') return /^\d+$/.test(String(v));
+    return true;
+  }
+
   /* The same summary as survey_results() in src/surveys.php. */
   function summarise(q) {
     const r = { answered: 0, kind: 'text', bars: [], average: null, texts: [] };
-    const values = people.map((p) => p.answers[q.id]).filter((v) => v !== undefined);
+    const values = people.map((p) => p.answers[q.id]).filter((v) => v !== undefined && fits(q, v));
     r.answered = values.length;
     if (['short', 'long', 'email', 'date'].includes(q.type)) {
       r.texts = values.slice(0, 50);
@@ -662,6 +672,7 @@
   /* One person at a time, newest first, like responses.php. */
   function shown(q, v) {
     if (v === undefined || v === '') return null;
+    if (!fits(q, v)) return Array.isArray(v) ? v.join(', ') : String(v);
     switch (q.type) {
       case 'multi': return v.join(', ');
       case 'date': return showDate(v);
@@ -694,7 +705,7 @@
     box.append(dl);
     if (boot.canDelete) {
       const form = el('form', { method: 'post', action: boot.deleteUrl.replace('{id}', String(p.id)) },
-        el('input', { type: 'hidden', name: 'csrf', value: boot.csrf }),
+        el('input', { type: 'hidden', name: 'csrf', value: ring.csrf }),
         el('input', { type: 'hidden', name: 'nr', value: String(nr) }),
         el('p', { text: T('Bijvoorbeeld een test of een dubbele inzending. Het verdwijnt ook uit de samenvatting en de download, en kan niet worden teruggezet.') }),
         el('button', { class: 'btn btn-danger', type: 'submit', text: T('Antwoord {nr} verwijderen', { nr }) }));
