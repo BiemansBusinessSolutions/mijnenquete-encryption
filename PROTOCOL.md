@@ -12,8 +12,13 @@ its public key from the service. For each answer submission the respondent:
 1. Generates a fresh ephemeral ECDH P-256 key pair and derives a 256-bit shared secret.
 2. Derives an AES-256-GCM key using HKDF-SHA256, with the 65-byte ephemeral public
    point as salt and `mijnenquete-answers-v1` as the info string.
-3. Encrypts UTF-8 JSON `{v:1,a:{"<question id>":"text or array"}}` with a random
-   12-byte IV and additional authenticated data `mijnenquete-answers:<survey id>`.
+3. Encrypts UTF-8 JSON `{v:1,a:{"<question id>":"text or array"},s:[<question id>]}`
+   with a random 12-byte IV and additional authenticated data
+   `mijnenquete-answers:<survey id>`. The optional `s` lists the questions that were
+   not on the respondent's route through a branching survey (`assets/flow.js`,
+   `assets/survey-collect.js`); answers to them are not included in `a`. When `s` is
+   absent, no question was skipped. The route stays inside the ciphertext because
+   it reveals answers.
 4. Sends base64 of `0x01 | ephemeral point (65) | IV (12) | ciphertext | tag (16)`.
 
 The owner decrypts in the browser. Survey binding rejects ciphertext moved

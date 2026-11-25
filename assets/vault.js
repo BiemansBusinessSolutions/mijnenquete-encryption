@@ -491,6 +491,11 @@
     return out;
   }
 
+  /** The ids of the questions this person's route skipped: whole numbers only, anything else is ignored. */
+  function cleanSkipped(list) {
+    return Array.isArray(list) ? [...new Set(list.filter((x) => Number.isInteger(x)))] : [];
+  }
+
   /* Failures in a row on this survey, kept across refreshes: from the third, the owner is asked to mail us. */
   const BUG_MAIL = 'foundabug@mijnenquete.nl';
   const failKey = 'mijnenquete:results-failures:' + boot.survey;
@@ -539,16 +544,17 @@
     people = [];
     for (const r of data.responses) {
       let answers = r.answers;
+      let skipped = r.skipped;
       if (r.sealed) {
         answers = null;
         // The key it was sealed for first, then the others (a key can change while someone fills in the survey).
         const order = [keys.get(r.key), ...[...keys].filter(([id]) => id !== r.key).map(([, k]) => k)].filter(Boolean);
         for (const key of order) {
-          try { answers = (await E.open(key, data.survey, r.sealed)).a; break; } catch { /* the next key */ }
+          try { const opened = await E.open(key, data.survey, r.sealed); answers = opened.a; skipped = opened.s; break; } catch { /* the next key */ }
         }
         if (answers === null) { failed++; continue; }
       }
-      people.push({ id: r.id, at: r.at, date: r.date, time: r.time, stamp: r.stamp, answers: clean(data.questions, answers) });
+      people.push({ id: r.id, at: r.at, date: r.date, time: r.time, stamp: r.stamp, answers: clean(data.questions, answers), skipped: cleanSkipped(skipped) });
     }
     if (!failed) {
       status.textContent = '';
@@ -585,9 +591,12 @@
 
   /* The same summary as survey_results() in src/surveys.php. */
   function summarise(q) {
-    const r = { answered: 0, kind: 'text', bars: [], average: null, texts: [] };
+    const r = { reached: null, answered: 0, kind: 'text', bars: [], average: null, texts: [] };
     const values = people.map((p) => p.answers[q.id]).filter((v) => v !== undefined && fits(q, v));
     r.answered = values.length;
+    // How many came past this question: null when nobody skipped it (then it is everyone).
+    const off = people.filter((p) => p.skipped.includes(q.id)).length;
+    r.reached = off ? people.length - off : null;
     if (['short', 'long', 'email', 'date'].includes(q.type)) {
       r.texts = values.slice(0, 50);
       return r;
@@ -642,7 +651,8 @@
     for (const q of data.questions) {
       const r = summarise(q);
       const item = el('li', { class: 'result' }, el('h2', { text: heading(q) }),
-        el('p', { class: 'muted', text: T('{type}, {n} van {total} beantwoord', { type: boot.types[q.type] || q.type, n: r.answered, total }) }));
+        el('p', { class: 'muted', text: T('{type}, {n} van {total} beantwoord', { type: boot.types[q.type] || q.type, n: r.answered, total: r.reached ?? total }) }));
+      if (r.reached !== null) item.append(el('p', { class: 'muted', text: T('{n} van {total} kwamen hier langs', { n: r.reached, total }) }));
       if (r.kind === 'text') {
         if (!r.texts.length) item.append(el('p', { class: 'muted', text: T('Niemand heeft deze vraag ingevuld.') }));
         else {
@@ -699,8 +709,10 @@
     const dl = el('dl', { class: 'one-response' });
     data.questions.forEach((q, i) => {
       const text = shown(q, p.answers[q.id]);
+      const off = text === null && p.skipped.includes(q.id);
       dl.append(el('div', {}, el('dt', {}, el('span', { class: 'q-n', 'aria-hidden': 'true', text: String(i + 1) }), ' ', heading(q)),
-        el('dd', { class: text === null ? 'muted' : null }, text === null ? T('Niet ingevuld') : lines(text))));
+        el('dd', { class: text === null ? (off ? 'muted is-off-route' : 'muted') : null },
+          text !== null ? lines(text) : (off ? '✕ ' + T('niet op deze route') : T('Niet ingevuld')))));
     });
     box.append(dl);
     if (boot.canDelete) {

@@ -1,21 +1,24 @@
 {
   "version": 1,
-  "sourceRevision": "881a9846ca8f29459601e48ca50cf402a52d5e89",
+  "sourceRevision": "aa665adf5457f255542643208f3d2392249b58df",
   "preview": false,
   "files": {
     ".gitattributes": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992",
     "assets/e2e.js": "4d954eda9d2e9c9d4ab2cb92db39cce1b321e06c3815a69c79d188b8dfd8ee1d",
+    "assets/flow.js": "72ffaf5abf9a33cdfbca13c5775a2f8497f734626584d75d69254ec581a849af",
     "assets/password.js": "11543c2d7972fe61af5b953d3368d2ad1044b676948bbf0eb5767358120cf952",
-    "assets/survey.js": "2d891119844393aab968900d8dd602eb4be4ebd9012bbc63fd1bce910c7a895b",
-    "assets/vault.js": "1337ce5e3f23d74d1cce6928f879fcedcaaf081211fc6228fdda668cf1027f67",
+    "assets/survey-collect.js": "fba190e751cb2cd3008d443f88b21ae481912eaf175503a61faa2492b89b0a82",
+    "assets/survey.js": "9136652a6bb3fbc53018cca6e589c7faf9a977416a34c694d916872df2eb2cb0",
+    "assets/vault.js": "ad5ce9bdeb4f8c5a5c7448418dec00b66a7a486a5039141563b2a48144a3e480",
     "LICENSE": "b56d897e78d7ebc573247fcff8ab2cb05d2416b569851184b18995c2346f45a2",
-    "PROTOCOL.md": "6593d9f25865d33a292e33e78aaa65af064b9d47faef928d7808589678f1aee5",
-    "README.md": "8a1a100108ddb726f89ec3dbc820602ca6b001b708452fcadd0b7b927c69eae3",
+    "PROTOCOL.md": "707b5c22816a32b2fa9bf918c110e6fb930aa55979c15b6a5e92dbcd82c500cf",
+    "README.md": "93e299b5a8c2642bbc77dde66ff2b7afef4abebb580d9e61e6347c528fa80240",
     "SECURITY.md": "83675e7103bcd28c9eb4829725b7f8c15e0410279d9eea013b6fdbb22bdf18f9",
-    "src/e2e.php": "2fa74c5b4e26a14ee29e2a426a828046cbbc55b88b64c6a4ccedc0c8960b93db",
+    "src/e2e.php": "9c168315621497e5aa9135d4023fcfaa4289089602713c411108a92b15fae515",
     "src/pages/encryption.php": "86e1f94da4a47890a3e0ff293ee4d26e4518383f6bcc775ce65d7e2a146518bb",
-    "src/respond.php": "8dfd3f60a529f233a881ac47a4a60d382b4e97e73957817196fd45e4be89da7d",
-    "src/views/survey.php": "8435297d7b20e1370d9bb470b7d1f3989de7b311983f5dc81b76915d5eaee378",
-    "tests/encryption.test.cjs": "b7a9dbba5ccedaf3fd7a9dde171d488f9568d8c83b22cdd1abdceecdef2ccac7"
+    "src/respond.php": "bed1443c9a4582743c59051ba712d30237afab31442416925b70fdcaf1725509",
+    "src/views/survey.php": "058d0b38667076f1cb78f2ccf91f4d267efa0a3933e7d687a4785cef20da7cb0",
+    "tests/encryption.test.cjs": "b7a9dbba5ccedaf3fd7a9dde171d488f9568d8c83b22cdd1abdceecdef2ccac7",
+    "tests/survey-collect.test.cjs": "11aa521991031530f5c5a6c57d432a82ef092b127d233e85553bf7abf89e0897"
   }
 }

@@ -1,6 +1,10 @@
 <?php
 /** Encrypted forms stay disabled until survey.js has successfully exercised browser encryption. */
 $n = 0;
+// Only surveys with a real split or skip need the route in the page; the plain ones stay as they were.
+$links = flow_links($questions);
+$branching = false;
+foreach ($links as $i => $l) if ($l['routes'] !== null || $l['next'] !== $i + 1) $branching = true;
 ?>
 <article class="survey">
   <?php if ($isOwner && $survey['status'] === 'draft'): ?>
@@ -36,6 +40,7 @@ $n = 0;
   <form method="post" action="<?= e($action) ?>" novalidate<?= $encrypted ? ' data-encrypted="true" hidden' : '' ?>>
     <?php if ($encrypted): ?><fieldset class="survey-fields" data-encrypted-fields disabled><?php endif ?>
     <?php if ($unlock): ?><input type="hidden" name="k" value="<?= e($unlock) ?>"><?php endif ?>
+    <?php if ($branching): ?><noscript><p class="hint"><?= e(t('Sommige vragen gelden misschien niet voor jou. Sla die gerust over.')) ?></p></noscript><?php endif ?>
     <ol class="survey-questions">
       <?php foreach ($questions as $q):
         $n++;
@@ -50,7 +55,7 @@ $n = 0;
         $aria = ($describe ? ' aria-describedby="' . $describe . '"' : '') . ($err ? ' aria-invalid="true"' : '');
         $req = $q['required'] ? ' required' : '';
       ?>
-      <li class="sq<?= $err ? ' sq-error' : '' ?>" id="vraag-<?= $n ?>">
+      <li class="sq<?= $err ? ' sq-error' : '' ?>" id="vraag-<?= $n ?>" data-q="<?= $qid ?>">
         <?php if ($grouped): ?><fieldset<?= $describe ? ' aria-describedby="' . $describe . '"' : '' ?>><legend><?php else: ?><label class="sq-title" for="<?= $fid ?>"><?php endif ?>
           <span class="sq-n"><?= $n ?></span>
           <span class="sq-text"><?= e($q['title']) ?><?php if ($q['required']): ?> <span class="req"><?= e(t('verplicht')) ?></span><?php endif ?></span>
@@ -122,14 +127,21 @@ $n = 0;
     </div>
     <?php if ($encrypted): ?></fieldset><?php endif ?>
   </form>
+  <?php if ($branching): ?>
+  <script type="application/json" id="flow"><?= json_block(['questions' => flow_questions($questions), 'links' => $links,
+      't' => js_texts(['Er is één vraag bijgekomen', 'Er zijn {n} vragen bijgekomen'])]) ?></script>
+  <?php endif ?>
   <?php if ($encrypted && $publicKey !== null):
     // What survey.js needs to check and seal the answers in the browser (src/e2e.php describes the format).
-    $sealQuestions = array_map(fn($q) => ['id' => $q['id'], 'type' => $q['type'], 'required' => $q['required'],
-        'choices' => $q['options']['choices'] ?? [], 'min' => (int)($q['options']['min'] ?? 1), 'max' => (int)($q['options']['max'] ?? 10)], $questions); ?>
-  <script type="application/json" id="seal"><?= json_block(['key' => $publicKey, 'survey' => (int)$survey['id'], 'questions' => $sealQuestions, 't' => js_texts([
+    // Links only for a survey that branches, so survey.js leaves the others exactly as they were.
+    $sealQuestions = array_map(fn($f, $q) => $f + ['min' => (int)($q['options']['min'] ?? 1), 'max' => (int)($q['options']['max'] ?? 10)],
+        flow_questions($questions), array_values($questions)); ?>
+  <script type="application/json" id="seal"><?= json_block(['key' => $publicKey, 'survey' => (int)$survey['id'], 'questions' => $sealQuestions]
+      + ($branching ? ['links' => $links] : []) + ['t' => js_texts([
       'Je hebt nog niets ingevuld.', 'Kies een geldige datum.', 'Vul een geldig e-mailadres in, zoals naam@voorbeeld.nl.', 'Deze vraag is verplicht.',
       'Nog niet verstuurd. Eén vraag heeft je aandacht nodig.', 'Nog niet verstuurd. {n} vragen hebben je aandacht nodig.',
       'Niet verstuurd: je browser kon je antwoorden niet versleutelen. Ze staan nog op deze pagina. Probeer opnieuw. Blijft dit gebeuren, gebruik dan een recente browser.',
+      'Er is één vraag bijgekomen', 'Er zijn {n} vragen bijgekomen',
   ])]) ?></script>
   <?php endif ?>
 

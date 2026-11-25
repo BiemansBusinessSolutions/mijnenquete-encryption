@@ -532,7 +532,7 @@ function show_survey(array $survey, array $owner): never
                 redirect($next);
             }
         } else {
-            [$answers, $errors] = collect_answers($questions, $posted);
+            [$answers, $errors, $skipped] = collect_answers($questions, $posted);
             if (!$errors && !$answers) $errors[0] = t('Je hebt nog niets ingevuld.');
             if (!$errors) {
                 if ($emailHash !== null && !claim_email_answer($survey, $emailHash)) view('survey-done', $base + ['byEmail' => true], 'survey');
@@ -541,7 +541,7 @@ function show_survey(array $survey, array $owner): never
                     if ($emailHash !== null) release_email_answer($survey, $emailHash);
                     view('survey-done', $base, 'survey');
                 }
-                store_with_claim(fn() => store_response((int)$survey['id'], $answers),
+                store_with_claim(fn() => store_response((int)$survey['id'], $answers, $skipped),
                     function () use ($survey, $emailHash) { if ($emailHash !== null) release_email_answer($survey, $emailHash); });
                 note_response_activity($survey, $device, $isOwner);
                 $next = after_answer_url($base['action'], $base['unlock'], $emailHash !== null);
@@ -551,6 +551,6 @@ function show_survey(array $survey, array $owner): never
         }
     }
     view('survey', $base + ['questions' => $questions, 'errors' => $errors, 'posted' => $posted,
-        'publicKey' => $ownerKey['public'] ?? null, 'scripts' => $encrypted ? ['e2e.js', 'survey.js'] : ['survey.js']],
+        'publicKey' => $ownerKey['public'] ?? null, 'scripts' => $encrypted ? ['flow.js', 'survey-collect.js', 'e2e.js', 'survey.js'] : ['flow.js', 'survey-collect.js', 'survey.js']],
         'survey', $errors ? 422 : 200);
 }

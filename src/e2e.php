@@ -214,7 +214,7 @@ function survey_response_data(int $surveyId, array $questions): array
     foreach (rows('SELECT a.response_id, a.question_id, a.value FROM answers a JOIN responses r ON r.id = a.response_id WHERE r.survey_id = ?', [$surveyId]) as $a) {
         $plain[(int)$a['response_id']][(string)$a['question_id']] = $a['value'];
     }
-    foreach (rows('SELECT id, created_at, sealed, key_id FROM responses WHERE survey_id = ? ORDER BY id DESC', [$surveyId]) as $r) {
+    foreach (rows('SELECT id, created_at, sealed, key_id, skipped FROM responses WHERE survey_id = ? ORDER BY id DESC', [$surveyId]) as $r) {
         $item = ['id' => (int)$r['id'], 'at' => (int)$r['created_at']];
         if ($r['sealed'] !== null) {
             $item['sealed'] = $r['sealed'];
@@ -225,6 +225,8 @@ function survey_response_data(int $surveyId, array $questions): array
                 $a[$qid] = isset($multi[(int)$qid]) ? array_values(json_decode($value, true) ?: []) : $value;
             }
             $item['answers'] = (object)$a;
+            // Plain responses carry their route too, so an encrypted survey with older readable ones shows it.
+            $item['skipped'] = array_keys(skipped_counts([$r['skipped']]));
         }
         $out[] = $item;
     }

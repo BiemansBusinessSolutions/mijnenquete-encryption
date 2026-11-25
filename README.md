@@ -8,7 +8,10 @@ does not license the rest of the application.
 ## What is here
 
 - `assets/e2e.js`: Web Crypto, password derivation, private-key wrapping and backup recovery.
-- `assets/survey.js`: respondent validation, capability check and encrypted submission.
+- `assets/survey.js`: capability check, showing only the questions on the respondent's route,
+  and encrypted submission.
+- `assets/survey-collect.js` and `assets/flow.js`: respondent validation and the route through a
+  branching survey, which decides which answers are sealed and which questions are listed as skipped.
 - `assets/password.js` and `assets/vault.js`: password stretching for every password form,
   key lifecycle, local decryption, results and CSV export. Account password fields arrive
   disabled and are enabled only by these files, so the password itself is never submitted.
@@ -22,6 +25,7 @@ does not license the rest of the application.
 - `src/views/survey.php`: the respondent form, hidden and disabled by default for
   encrypted surveys until a trial encryption succeeds.
 - `tests/encryption.test.cjs`: runnable checks using the actual browser crypto file.
+- `tests/survey-collect.test.cjs`: runnable checks that only answers on the route are sealed.
 
 These are complete source files, not rewritten examples.
 
