@@ -326,7 +326,7 @@ function mail_respondent_code(array $survey, array $owner, string $email, string
     $intro = t('Vul deze code in om de enquête van {name} te openen.', ['name' => $owner['display_name']]);
     $outro = t('De code is 15 minuten geldig. Heb je dit niet aangevraagd? Dan hoef je niets te doen.');
     $box = '<div style="font-size:32px;font-weight:bold;letter-spacing:4px;background:#ffd23f;padding:14px 18px;display:inline-block">{{ params.code }}</div>';
-    return send_survey_mail(brevo_payload(brevo_sender(), null, t('{code} is je code voor Mijn Enquête', ['code' => '{{ params.code }}']),
+    return send_survey_mail(brevo_payload(brevo_sender('code'), null, t('{code} is je code voor Mijn Enquête', ['code' => '{{ params.code }}']),
         "$heading\n\n$intro\n\n{{ params.code }}\n\n$outro\n", mail_html($heading, $intro, $box, $outro),
         [['to' => email_normal($email), 'params' => ['code' => $code]]]));
 }
@@ -448,8 +448,10 @@ function show_survey(array $survey, array $owner): never
 {
     $viewer = current_user();
     $isOwner = $viewer && (int)$viewer['id'] === (int)$owner['id'];
-    // A concept exists only for its maker; to everyone else the link does not exist yet.
-    if ($survey['status'] === 'draft' && !$isOwner) not_found();
+    // A draft exists only for its maker and their collaborators (the builder's preview); to everyone else the link
+    // does not exist yet. Only $isOwner bypasses the password, device and activity rules below.
+    if ($survey['status'] === 'draft' && !$isOwner
+        && !draft_viewable($survey, $viewer ? (int)$viewer['id'] : null, $viewer ? survey_member((int)$survey['id'], (int)$viewer['id']) : null)) not_found();
 
     $questions = survey_questions((int)$survey['id']);
     $byEmail = email_access_on($survey);
@@ -457,10 +459,13 @@ function show_survey(array $survey, array $owner): never
     // A survey behind a password shows nothing of itself in a link preview.
     $encrypted = survey_encrypted($survey);
     $ownerKey = $encrypted ? e2e_current_key((int)$owner['id']) : null;
+    // Results-collaborators get their own sealed copy of each new answer (only when there is an owner key to seal for).
+    $readerKeys = $ownerKey !== null ? reader_keys((int)$survey['id']) : [];
     $base = ['title' => $locked ? gate_title(survey_password($survey) !== null, $byEmail) : $survey['title'], 'survey' => $survey, 'encrypted' => $encrypted,
         'description' => $locked || $survey['description'] === ''
             ? t('Een enquête van {name} op Mijn Enquête.', ['name' => $owner['display_name']]) : $survey['description'],
         'owner' => $owner, 'isOwner' => $isOwner, 'ownerEmail' => mask_email($owner['email']),
+        'readers' => readers_sentence((string)$owner['display_name'], array_column(survey_readers((int)$survey['id']), 'name'), $encrypted),
         'action' => survey_path($survey, $owner['username']), 'unlock' => null];
 
     if ($survey['status'] === 'closed') view('survey-closed', $base, 'survey');
@@ -524,7 +529,8 @@ function show_survey(array $survey, array $owner): never
                     if ($emailHash !== null) release_email_answer($survey, $emailHash);
                     view('survey-done', $base, 'survey');
                 }
-                store_with_claim(fn() => store_sealed_response((int)$survey['id'], trim($_POST['sealed']), $ownerKey['id']),
+                $copies = accept_reader_seals($_POST['sealed_for'] ?? null, $_POST['readers_fp'] ?? null, $readerKeys, (int)$survey['id']);
+                store_with_claim(fn() => store_sealed_response((int)$survey['id'], trim($_POST['sealed']), $ownerKey['id'], $copies),
                     function () use ($survey, $emailHash) { if ($emailHash !== null) release_email_answer($survey, $emailHash); });
                 note_response_activity($survey, $device, $isOwner);
                 $next = after_answer_url($base['action'], $base['unlock'], $emailHash !== null);
@@ -551,6 +557,6 @@ function show_survey(array $survey, array $owner): never
         }
     }
     view('survey', $base + ['questions' => $questions, 'errors' => $errors, 'posted' => $posted,
-        'publicKey' => $ownerKey['public'] ?? null, 'scripts' => $encrypted ? ['flow.js', 'survey-collect.js', 'e2e.js', 'survey.js'] : ['flow.js', 'survey-collect.js', 'survey.js']],
+        'publicKey' => $ownerKey['public'] ?? null, 'readerKeys' => $readerKeys, 'scripts' => $encrypted ? ['flow.js', 'survey-collect.js', 'e2e.js', 'survey.js'] : ['flow.js', 'survey-collect.js', 'survey.js']],
         'survey', $errors ? 422 : 200);
 }

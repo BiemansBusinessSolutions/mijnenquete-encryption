@@ -542,7 +542,10 @@
     data = body;
     let failed = 0;
     people = [];
+    payloads.clear();
     for (const r of data.responses) {
+      // A collaborator's: an answer that has no copy for them (not shared, or not yet: boot.notShared and pendingBackfill say which).
+      if (r.unshared) continue;
       let answers = r.answers;
       let skipped = r.skipped;
       if (r.sealed) {
@@ -550,7 +553,7 @@
         // The key it was sealed for first, then the others (a key can change while someone fills in the survey).
         const order = [keys.get(r.key), ...[...keys].filter(([id]) => id !== r.key).map(([, k]) => k)].filter(Boolean);
         for (const key of order) {
-          try { const opened = await E.open(key, data.survey, r.sealed); answers = opened.a; skipped = opened.s; break; } catch { /* the next key */ }
+          try { const opened = await E.open(key, data.survey, r.sealed); answers = opened.a; skipped = opened.s; payloads.set(r.id, opened); break; } catch { /* the next key */ }
         }
         if (answers === null) { failed++; continue; }
       }
@@ -571,9 +574,92 @@
         : T('{n} antwoorden konden niet worden geopend: ze zijn met een andere sleutel versleuteld of beschadigd.', { n: failed }),
       `KEY ${failed}/${data.responses.length}`);
     }
+    const shared = $('[data-vault-shared]');
+    if (shared) {
+      const owner = boot.owner || '';
+      const notShared = Number(boot.notShared) || 0;
+      shared.textContent = [
+        notShared === 1 ? T('Eén antwoord van voordat {owner} de antwoorden met je deelde, is niet gedeeld.', { owner })
+          : notShared > 1 ? T('{n} antwoorden van voordat {owner} de antwoorden met je deelde, zijn niet gedeeld.', { n: notShared, owner }) : '',
+        !boot.pendingBackfill ? ''
+          : boot.sharedExisting ? T('{owner} heeft de bestaande antwoorden met je gedeeld. Ze verschijnen zodra {owner} de resultaten opent.', { owner })
+          : T('Nog niet alle nieuwe antwoorden zijn met je gedeeld. Ze verschijnen zodra {owner} de resultaten opent.', { owner }),
+      ].filter(Boolean).join(' ');
+      shared.hidden = !shared.textContent;
+    }
     $('[data-vault-tabs]').hidden = !people.length;
     $('[data-vault-csv]').hidden = !people.length;
     route();
+    // After the owner's own view is up, never before: sharing the existing answers runs alongside.
+    if (boot.share) backfill().catch((error) => console.error(error));
+  }
+
+  /*
+   * The owner shares the existing answers with collaborators they chose that for: the answers already opened above are
+   * sealed again here, for each collaborator's public key, and sent in batches. The server never gets them readable.
+   */
+  const payloads = new Map();
+  let sharing = false;
+  async function backfill() {
+    if (sharing) return;
+    sharing = true;
+    const line = $('[data-vault-backfill]');
+    const done = new Map();
+    const totals = new Map();
+    const names = new Map();
+    // Page by page through the ids: each page goes past what was stored or skipped (not opened here, refused), so an
+    // answer this browser cannot open never blocks the ones after it. Skipped ones are offered again next time.
+    let after = 0;
+    try {
+      for (;;) {
+        const res = await fetch(boot.share + '?after=' + after, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+        if (!res.ok) return;
+        const body = await res.json();
+        const todo = (Array.isArray(body.todo) ? body.todo : []).filter((t) => Array.isArray(t.responses) && t.responses.length);
+        if (!todo.length) break;
+        for (const t of todo) {
+          names.set(t.user, t.name || '');
+          // One member's failure (their key changed, results switched off meanwhile) does not stop the others.
+          try {
+            if (!totals.has(t.user)) totals.set(t.user, (done.get(t.user) || 0) + (Number(t.total) || t.responses.length));
+            const copies = {};
+            for (const id of t.responses) {
+              const payload = payloads.get(id);
+              if (!payload) continue; // not opened here (an earlier password): it stays for another time
+              try { copies[id] = await E.seal(t.public, data.survey, payload); } catch { /* not this key */ }
+            }
+            const n = Object.keys(copies).length;
+            if (!n) continue;
+            const stored = await post(boot.share, { user: String(t.user), key: String(t.key), copies: JSON.stringify(copies) });
+            if (!(stored.stored > 0)) continue;
+            done.set(t.user, (done.get(t.user) || 0) + n);
+            if (line) {
+              line.textContent = T('Antwoorden delen met {name}… {done} van {total}', { name: t.name || '', done: done.get(t.user), total: totals.get(t.user) });
+              line.hidden = false;
+            }
+          } catch (error) {
+            console.error(error);
+          }
+        }
+        // The next page starts after the lowest last id of this one: nobody's ids are passed over unseen.
+        const next = Math.min(...todo.map((t) => Math.max(...t.responses)));
+        if (!(next > after)) break;
+        after = next;
+      }
+      // Done: the members whose todo is now empty, from the start (what this browser could not open stays on it).
+      if (!line || !done.size) return;
+      const res = await fetch(boot.share + '?after=0', { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+      if (!res.ok) return;
+      const body = await res.json();
+      const left = new Set((Array.isArray(body.todo) ? body.todo : []).filter((t) => Array.isArray(t.responses) && t.responses.length).map((t) => t.user));
+      const finished = [...done.keys()].filter((user) => !left.has(user));
+      if (!finished.length) return;
+      line.textContent = finished.map((user) => T('Antwoorden gedeeld met {name}.', { name: names.get(user) })).join(' ');
+      line.hidden = false;
+      setTimeout(() => { line.hidden = true; }, 4000);
+    } finally {
+      sharing = false;
+    }
   }
 
   /* A question's title, marked when it was removed from the survey (question_heading() in src/surveys.php). */

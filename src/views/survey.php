@@ -136,7 +136,10 @@ foreach ($links as $i => $l) if ($l['routes'] !== null || $l['next'] !== $i + 1)
     // Links only for a survey that branches, so survey.js leaves the others exactly as they were.
     $sealQuestions = array_map(fn($f, $q) => $f + ['min' => (int)($q['options']['min'] ?? 1), 'max' => (int)($q['options']['max'] ?? 10)],
         flow_questions($questions), array_values($questions)); ?>
-  <script type="application/json" id="seal"><?= json_block(['key' => $publicKey, 'survey' => (int)$survey['id'], 'questions' => $sealQuestions]
+  <script type="application/json" id="seal"><?= json_block(['key' => $publicKey, 'survey' => (int)$survey['id'], 'questions' => $sealQuestions,
+      // Readers by position only; the post names them by index and the fingerprint (src/e2e.php) checks the list.
+      'readers' => array_map(fn($r) => ['public' => $r['public']], $readerKeys ?? []),
+      'readersFp' => readers_fingerprint((int)$survey['id'], $readerKeys ?? [])]
       + ($branching ? ['links' => $links] : []) + ['t' => js_texts([
       'Je hebt nog niets ingevuld.', 'Kies een geldige datum.', 'Vul een geldig e-mailadres in, zoals naam@voorbeeld.nl.', 'Deze vraag is verplicht.',
       'Nog niet verstuurd. Eén vraag heeft je aandacht nodig.', 'Nog niet verstuurd. {n} vragen hebben je aandacht nodig.',

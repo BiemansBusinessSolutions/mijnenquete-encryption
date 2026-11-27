@@ -42,14 +42,30 @@
       if (!Object.keys(errors).length && !Object.keys(answers).length) errors[0] = T('Je hebt nog niets ingevuld.');
       if (Object.keys(errors).length) { showErrors(errors); busy(false); return; }
       let sealed;
+      // s: the questions off this respondent's route, left out when there are none (PROTOCOL.md).
+      const payload = skipped.length ? { v: 1, a: answers, s: skipped } : { v: 1, a: answers };
       try {
-        // s: the questions off this respondent's route, left out when there are none (PROTOCOL.md).
-        sealed = await E.seal(seal.key, seal.survey, skipped.length ? { v: 1, a: answers, s: skipped } : { v: 1, a: answers });
+        sealed = await E.seal(seal.key, seal.survey, payload);
       } catch (error) {
         console.error('mijnenquete: answer encryption failed', error);
         showErrors({ 0: T('Niet verstuurd: je browser kon je antwoorden niet versleutelen. Ze staan nog op deze pagina. Probeer opnieuw. Blijft dit gebeuren, gebruik dan een recente browser.') });
         busy(false);
         return;
+      }
+      // The same answers once more for each collaborator who may read them, by their position in the list the page
+      // came with (no user ids on the page). A copy that fails, or that would make the post too large, is left out:
+      // the answer still goes to the owner, and the owner's browser shares it with the collaborator later.
+      const copies = [];
+      let used = sealed.length;
+      for (const reader of seal.readers) {
+        let copy;
+        try { copy = await E.seal(reader.public, seal.survey, payload); } catch (error) {
+          console.error('mijnenquete: sealing for a collaborator failed', error);
+          continue;
+        }
+        if (!S.copyFits(used, copy.length)) break;
+        used += copy.length;
+        copies.push([reader.index, copy]);
       }
       // Only the sealed answers leave this browser: a separate form, without the readable fields.
       const out = document.createElement('form');
@@ -58,6 +74,10 @@
       out.hidden = true;
       const add = (name, value) => { const i = document.createElement('input'); i.type = 'hidden'; i.name = name; i.value = value; out.append(i); };
       add('sealed', sealed);
+      if (copies.length) {
+        for (const [index, value] of copies) add('sealed_for[' + index + ']', value);
+        add('readers_fp', String(seal.readersFp || ''));
+      }
       for (const name of ['k', 'website']) { const f = form.elements[name]; if (f) add(name, f.value); }
       document.body.append(out);
       out.submit();
@@ -67,6 +87,15 @@
         seal = JSON.parse(sealBlock.textContent);
         // Exercise the real key and algorithms before allowing anyone to enter answers.
         await E.seal(seal.key, seal.survey, { v: 1, a: {} });
+        // A collaborator key that does not work here is dropped; the survey stays open for answers.
+        const readers = [];
+        const listed = Array.isArray(seal.readers) ? seal.readers : [];
+        for (const [index, reader] of listed.entries()) {
+          try { await E.seal(reader.public, seal.survey, { v: 1, a: {} }); readers.push({ index, public: reader.public }); } catch (error) {
+            console.error('mijnenquete: a collaborator key is unusable', error);
+          }
+        }
+        seal.readers = readers;
         ready = true;
         form.querySelector('[data-encrypted-fields]').disabled = false;
         if (seal.links) {

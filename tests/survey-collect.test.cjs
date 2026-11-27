@@ -78,3 +78,12 @@ test('without links every question is on the route, as before branching', () => 
   assert.deepEqual(errors, { 6: 'Required.' });
   assert.deepEqual(skipped, []);
 });
+
+/* Copies for collaborators never push the post past post_max_size (6M): together with the answer under 5,000,000. */
+test('copyFits: the answer and its copies stay under 5,000,000 characters', () => {
+  assert.equal(S.COPY_BUDGET, 5000000);
+  assert.equal(S.copyFits(1000, 1000), true);
+  assert.equal(S.copyFits(3000000, 1999999), true);
+  assert.equal(S.copyFits(3000000, 2000000), false, 'reaching the limit is too much');
+  assert.equal(S.copyFits(3000000, 3000000), false, 'one copy of a 3 MB answer is already too much');
+});

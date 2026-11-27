@@ -1,24 +1,24 @@
 {
   "version": 1,
-  "sourceRevision": "2c3d960139278286fe87eb43d19c4dfed98b7a1c",
+  "sourceRevision": "fded7e798c7d4f0faccba55083a87d286776bd56",
   "preview": false,
   "files": {
     ".gitattributes": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992",
     "assets/e2e.js": "4d954eda9d2e9c9d4ab2cb92db39cce1b321e06c3815a69c79d188b8dfd8ee1d",
     "assets/flow.js": "72ffaf5abf9a33cdfbca13c5775a2f8497f734626584d75d69254ec581a849af",
     "assets/password.js": "11543c2d7972fe61af5b953d3368d2ad1044b676948bbf0eb5767358120cf952",
-    "assets/survey-collect.js": "fba190e751cb2cd3008d443f88b21ae481912eaf175503a61faa2492b89b0a82",
-    "assets/survey.js": "9136652a6bb3fbc53018cca6e589c7faf9a977416a34c694d916872df2eb2cb0",
-    "assets/vault.js": "ad5ce9bdeb4f8c5a5c7448418dec00b66a7a486a5039141563b2a48144a3e480",
+    "assets/survey-collect.js": "9be7c5c3778a1d46399035777fa6334bcdf0def06cfcb91a7809164f5615d980",
+    "assets/survey.js": "b3e62536a9597980f253841545636bb1c5674d06d3e025c78a86b360ec9af23b",
+    "assets/vault.js": "9bd85e648627ee2a944104d9229720d3b92b57c915cd616ae3a4b1a02be94a43",
     "LICENSE": "b56d897e78d7ebc573247fcff8ab2cb05d2416b569851184b18995c2346f45a2",
     "PROTOCOL.md": "707b5c22816a32b2fa9bf918c110e6fb930aa55979c15b6a5e92dbcd82c500cf",
     "README.md": "93e299b5a8c2642bbc77dde66ff2b7afef4abebb580d9e61e6347c528fa80240",
     "SECURITY.md": "83675e7103bcd28c9eb4829725b7f8c15e0410279d9eea013b6fdbb22bdf18f9",
-    "src/e2e.php": "9c168315621497e5aa9135d4023fcfaa4289089602713c411108a92b15fae515",
-    "src/pages/encryption.php": "86e1f94da4a47890a3e0ff293ee4d26e4518383f6bcc775ce65d7e2a146518bb",
-    "src/respond.php": "bed1443c9a4582743c59051ba712d30237afab31442416925b70fdcaf1725509",
-    "src/views/survey.php": "058d0b38667076f1cb78f2ccf91f4d267efa0a3933e7d687a4785cef20da7cb0",
+    "src/e2e.php": "c9631a753089da1f1904365921552ee8831b6879de21f7517c0ad7ac9c40e04a",
+    "src/pages/encryption.php": "b39dadb8924d2143166a1d2235a3697eb867a517a7d226a8344efdbafc43c0c4",
+    "src/respond.php": "5cb6eebfb3d662d90bbf3b57d1495b5a8271ec8cb74209bec4fb9f2a75bc3dc7",
+    "src/views/survey.php": "716faa18d6b22c668be9c645bcee567dd0dbacfdf314159d7dd694d0d3777bd8",
     "tests/encryption.test.cjs": "b7a9dbba5ccedaf3fd7a9dde171d488f9568d8c83b22cdd1abdceecdef2ccac7",
-    "tests/survey-collect.test.cjs": "11aa521991031530f5c5a6c57d432a82ef092b127d233e85553bf7abf89e0897"
+    "tests/survey-collect.test.cjs": "6a99e49bc97bef49529c81a266e6e98ae5c9aa9edfd50f80292e707c7fe7b1e2"
   }
 }

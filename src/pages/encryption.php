@@ -89,13 +89,13 @@ function page_account_backup(): never
     redirect('/account#back-up');
 }
 
-/** The questions and every response, sealed ones as they are, for the owner's browser to open. */
+/** The questions and every response, sealed ones as they are, for the browser to open (owner, or a collaborator with results). */
 function page_survey_data(string $id): never
 {
     $user = current_user();
     if (!$user) json_out(['error' => t('Je bent uitgelogd.')], 401);
-    $survey = row('SELECT * FROM surveys WHERE public_id = ? AND user_id = ?', [$id, $user['id']]);
-    if (!$survey) json_out(['error' => t('Deze enquête bestaat niet meer.')], 404);
+    // A survey in the bin too: its owner can still read and download the answers there.
+    $survey = survey_access_json($id, $user, 'results', true);
     // Retired questions too: their answers stay in the results and the download, marked as removed.
     $questions = survey_questions((int)$survey['id'], true);
     json_out([
@@ -103,6 +103,26 @@ function page_survey_data(string $id): never
         'questions' => array_map(fn($q) => ['id' => $q['id'], 'type' => $q['type'], 'title' => $q['title'], 'retired' => $q['retired'],
             'choices' => $q['options']['choices'] ?? [], 'min' => (int)($q['options']['min'] ?? 1), 'max' => (int)($q['options']['max'] ?? 10)], $questions),
         'responses' => array_map(fn($r) => $r + ['date' => fmt_date($r['at']), 'time' => fmt_time($r['at']), 'stamp' => date('Y-m-d H:i', $r['at'])],
-            survey_response_data((int)$survey['id'], $questions)),
+            survey_response_data((int)$survey['id'], $questions, $survey['rights']['owner'] ? null : (int)$user['id'])),
     ]);
+}
+
+/**
+ * The owner's browser shares the existing answers with the collaborators they chose that for: GET says which responses
+ * still need a copy for whom (and their key), POST stores a batch sealed in that browser. Owner only; never plaintext.
+ */
+function page_survey_share(string $id): never
+{
+    $user = current_user();
+    if (!$user) json_out(['error' => t('Je bent uitgelogd.')], 401);
+    $survey = survey_access_json($id, $user, 'owner');
+    // ?after=<id>: the page after the ids this browser already stored or could not open.
+    $after = $_GET['after'] ?? '0';
+    if (!is_post()) json_out(['todo' => backfill_todo((int)$survey['id'], is_string($after) && ctype_digit($after) ? (int)$after : 0)]);
+    csrf_check();
+    $copies = json_decode((string)($_POST['copies'] ?? ''), true);
+    $member = (string)($_POST['user'] ?? '');
+    $key = (string)($_POST['key'] ?? '');
+    if (!is_array($copies) || !ctype_digit($member) || !ctype_digit($key) || count($copies) > 50) json_out(['error' => 'invalid'], 422);
+    json_out(['stored' => store_backfill((int)$survey['id'], (int)$member, (int)$key, $copies)]);
 }

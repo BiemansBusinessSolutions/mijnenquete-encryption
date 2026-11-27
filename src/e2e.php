@@ -200,13 +200,181 @@ function multi_ids(array $questions): array
     return $ids;
 }
 
-function store_sealed_response(int $surveyId, string $sealed, int $keyId): void
+/**
+ * The results-collaborators new answers are also sealed for, each with their newest key. Built from survey_readers(),
+ * so the copies and the names respondents are shown always agree; a reader without a key yet gets no copy.
+ * @return list<array{user: int, key: int, public: string}>
+ */
+function reader_keys(int $surveyId): array
 {
-    q('INSERT INTO responses (survey_id, created_at, sealed, key_id) VALUES (?, ?, ?, ?)', [$surveyId, time(), $sealed, $keyId]);
+    $out = [];
+    foreach (survey_readers($surveyId) as $r) {
+        if ($k = e2e_current_key($r['user_id'])) $out[] = ['user' => $r['user_id'], 'key' => $k['id'], 'public' => $k['public']];
+    }
+    return $out;
 }
 
-/** Answers to read in the owner's browser: sealed ones as they are, older plain ones as values. */
-function survey_response_data(int $surveyId, array $questions): array
+/**
+ * A short, opaque mark of the reader list in its order (user and key ids), carried by the #seal block and posted back,
+ * so a list that changed between page load and submit is noticed without the page showing anyone's user id.
+ */
+function readers_fingerprint(int $surveyId, array $readers): string
+{
+    $ids = array_map(fn($r) => (int)$r['user'] . ':' . (int)$r['key'], $readers);
+    return substr(hash_hmac('sha256', $surveyId . '|' . implode(',', $ids), app_key('readers')), 0, 16);
+}
+
+/**
+ * The collaborator copies worth keeping from a post's sealed_for[<position>]: the position is the reader's index in
+ * $readers, the list as computed again for this post. If that list is not the one the page was built with (the posted
+ * fingerprint differs), every copy is dropped; the owner's back-fill brings them later. Copies that do not look sealed
+ * are dropped too, without a word: the answer itself never fails over a copy.
+ * @return list<array{user: int, key: int, sealed: string}>
+ */
+function accept_reader_seals(mixed $posted, mixed $fingerprint, array $readers, int $surveyId): array
+{
+    if (!is_array($posted) || !is_string($fingerprint) || !hash_equals(readers_fingerprint($surveyId, $readers), $fingerprint)) return [];
+    $out = [];
+    foreach (array_values($readers) as $i => $r) {
+        $v = $posted[$i] ?? null;
+        if (is_string($v) && sealed_ok(trim($v))) $out[] = ['user' => (int)$r['user'], 'key' => (int)$r['key'], 'sealed' => trim($v)];
+    }
+    return $out;
+}
+
+/** The answer sealed for the owner, and its copies for collaborators, all or nothing. */
+function store_sealed_response(int $surveyId, string $sealed, int $keyId, array $copies = []): void
+{
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        q('INSERT INTO responses (survey_id, created_at, sealed, key_id) VALUES (?, ?, ?, ?)', [$surveyId, time(), $sealed, $keyId]);
+        $rid = (int)$pdo->lastInsertId();
+        foreach ($copies as $c) {
+            // IGNORE: a collaborator whose account is deleted this very moment must not cost the respondent their answer.
+            q('INSERT IGNORE INTO response_seals (response_id, user_id, key_id, sealed) VALUES (?, ?, ?, ?)', [$rid, $c['user'], $c['key'], $c['sealed']]);
+        }
+        $pdo->commit();
+    } catch (Throwable $ex) {
+        $pdo->rollBack();
+        throw $ex;
+    }
+}
+
+/**
+ * The answers worth storing from the owner's back-fill for one collaborator ($copies: response id => sealed): only while
+ * that member has the results, only for the member's current key, only for sealed responses of this survey
+ * ($surveyResponseIds), only what looks sealed. With the existing answers shared any of them; with only new answers
+ * just those after results_since (an answer that arrived before acceptance, or from a page loaded earlier, has no
+ * copy yet and is brought this way).
+ * @return array<int, string>
+ */
+function backfill_accepts(array $copies, array $member, int $currentKeyId, int $postedKey, array $surveyResponseIds): array
+{
+    if ((int)($member['results'] ?? 0) !== 1) return [];
+    if ($postedKey !== $currentKeyId) return [];
+    [$low] = backfill_window($member, 0);
+    $ofSurvey = array_flip(array_map('intval', $surveyResponseIds));
+    $out = [];
+    foreach ($copies as $id => $v) {
+        if (!is_int($id) && !ctype_digit((string)$id)) continue;
+        $id = (int)$id;
+        if (!isset($ofSurvey[$id]) || $id <= $low || !is_string($v) || !sealed_ok(trim($v))) continue;
+        $out[$id] = trim($v);
+    }
+    return $out;
+}
+
+/**
+ * Which response ids the back-fill looks at for this member: above $after (the owner's browser moves it past what it
+ * stored or could not open) and, with only new answers, above results_since. No upper bound. Not shared_upto: that
+ * only records progress, so an answer the owner's browser could not open before is offered again next time.
+ * @return array{0: int, 1: int} [exclusive low, inclusive high]
+ */
+function backfill_window(array $member, int $after): array
+{
+    $floor = (int)($member['share_existing'] ?? 0) === 1 ? 0 : (int)($member['results_since'] ?? 0);
+    return [max(0, $after, $floor), PHP_INT_MAX];
+}
+
+/** Responses of the survey sealed for the owner, in the window, that have no copy for the member yet. Args: user, survey, low, high. */
+const BACKFILL_MISSING = 'FROM responses r LEFT JOIN response_seals rs ON rs.response_id = r.id AND rs.user_id = ?
+    WHERE r.survey_id = ? AND r.sealed IS NOT NULL AND r.id > ? AND r.id <= ? AND rs.response_id IS NULL';
+
+/**
+ * Per results-collaborator with a key: the sealed responses in their window (and above $after) that still have no
+ * copy for them, at most $limit at a time, with how many lack one in all.
+ * @return list<array{user: int, name: string, key: int, public: string, responses: list<int>, total: int}>
+ */
+function backfill_todo(int $surveyId, int $after = 0, int $limit = 50): array
+{
+    $out = [];
+    foreach (rows('SELECT m.user_id, m.results_since, m.share_existing, u.display_name FROM survey_members m JOIN users u ON u.id = m.user_id
+                   WHERE m.survey_id = ? AND m.accepted_at IS NOT NULL AND m.results = 1 ORDER BY m.invited_at, m.id', [$surveyId]) as $m) {
+        $key = e2e_current_key((int)$m['user_id']);
+        if (!$key) continue;
+        $ids = array_map('intval', array_column(rows('SELECT r.id ' . BACKFILL_MISSING . ' ORDER BY r.id LIMIT ' . max(1, $limit),
+            [$m['user_id'], $surveyId, ...backfill_window($m, $after)]), 'id'));
+        if (!$ids) continue;
+        $out[] = ['user' => (int)$m['user_id'], 'name' => (string)$m['display_name'], 'key' => $key['id'], 'public' => $key['public'],
+            'responses' => $ids, 'total' => (int)val('SELECT COUNT(*) ' . BACKFILL_MISSING, [$m['user_id'], $surveyId, ...backfill_window($m, 0)])];
+    }
+    return $out;
+}
+
+/** Whether the owner still has answers to share with this member (their results page says so meanwhile). */
+function backfill_pending(int $surveyId, array $member): bool
+{
+    if ((int)$member['results'] !== 1 || $member['user_id'] === null) return false;
+    return (bool)val('SELECT 1 ' . BACKFILL_MISSING . ' LIMIT 1', [$member['user_id'], $surveyId, ...backfill_window($member, 0)]);
+}
+
+/**
+ * How many answers this member will not get: with only new answers shared, the sealed ones up to results_since that
+ * have no copy for them (their results page says so). Every other missing copy is still to come (backfill_pending()).
+ */
+function backfill_not_shared(int $surveyId, array $member): int
+{
+    if ((int)$member['results'] !== 1 || (int)$member['share_existing'] === 1 || $member['user_id'] === null) return 0;
+    return (int)val('SELECT COUNT(*) ' . BACKFILL_MISSING, [$member['user_id'], $surveyId, 0, (int)($member['results_since'] ?? 0)]);
+}
+
+/**
+ * Store the owner's back-fill copies for one collaborator, checked by backfill_accepts() against the member row as it is
+ * now (locked, so switching their results off cannot cross it), and raise shared_upto. Returns how many were new.
+ */
+function store_backfill(int $surveyId, int $userId, int $postedKey, array $copies): int
+{
+    if (!$copies || count($copies) > 50) return 0;
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $member = row('SELECT * FROM survey_members WHERE survey_id = ? AND user_id = ? AND accepted_at IS NOT NULL FOR UPDATE', [$surveyId, $userId]);
+        $key = e2e_current_key($userId);
+        $ids = array_values(array_filter(array_keys($copies), fn($id) => is_int($id) || ctype_digit((string)$id)));
+        $ofSurvey = $ids ? array_column(rows('SELECT id FROM responses WHERE survey_id = ? AND sealed IS NOT NULL AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')',
+            [$surveyId, ...array_map('intval', $ids)]), 'id') : [];
+        $accepted = $member && $key && member_holds_access($member) ? backfill_accepts($copies, $member, $key['id'], $postedKey, $ofSurvey) : [];
+        $n = 0;
+        foreach ($accepted as $rid => $sealed) {
+            $n += q('INSERT IGNORE INTO response_seals (response_id, user_id, key_id, sealed) VALUES (?, ?, ?, ?)', [$rid, $userId, $key['id'], $sealed])->rowCount();
+        }
+        if ($accepted) {
+            q('UPDATE survey_members SET shared_upto = GREATEST(COALESCE(shared_upto, 0), ?) WHERE id = ?', [max(array_keys($accepted)), $member['id']]);
+        }
+        $pdo->commit();
+    } catch (Throwable $ex) {
+        $pdo->rollBack();
+        throw $ex;
+    }
+    return $n;
+}
+
+/**
+ * Answers to read in the browser: sealed ones as they are, older plain ones as values. For the owner ($forUser null) the
+ * sealed answers themselves; for a results-collaborator their own copy, and a response without one only as counted.
+ */
+function survey_response_data(int $surveyId, array $questions, ?int $forUser = null): array
 {
     $multi = multi_ids($questions);
     $out = [];
@@ -214,9 +382,15 @@ function survey_response_data(int $surveyId, array $questions): array
     foreach (rows('SELECT a.response_id, a.question_id, a.value FROM answers a JOIN responses r ON r.id = a.response_id WHERE r.survey_id = ?', [$surveyId]) as $a) {
         $plain[(int)$a['response_id']][(string)$a['question_id']] = $a['value'];
     }
-    foreach (rows('SELECT id, created_at, sealed, key_id, skipped FROM responses WHERE survey_id = ? ORDER BY id DESC', [$surveyId]) as $r) {
+    $sql = $forUser === null
+        ? 'SELECT id, created_at, sealed, key_id, skipped FROM responses WHERE survey_id = ? ORDER BY id DESC'
+        : 'SELECT r.id, r.created_at, r.skipped, IF(r.sealed IS NULL, NULL, rs.sealed) AS sealed, rs.key_id, r.sealed IS NOT NULL AS was_sealed
+           FROM responses r LEFT JOIN response_seals rs ON rs.response_id = r.id AND rs.user_id = ? WHERE r.survey_id = ? ORDER BY r.id DESC';
+    foreach (rows($sql, $forUser === null ? [$surveyId] : [$forUser, $surveyId]) as $r) {
         $item = ['id' => (int)$r['id'], 'at' => (int)$r['created_at']];
-        if ($r['sealed'] !== null) {
+        if ($forUser !== null && (int)$r['was_sealed'] === 1 && $r['sealed'] === null) {
+            $item['unshared'] = true;
+        } elseif ($r['sealed'] !== null) {
             $item['sealed'] = $r['sealed'];
             $item['key'] = $r['key_id'] === null ? null : (int)$r['key_id'];
         } else {

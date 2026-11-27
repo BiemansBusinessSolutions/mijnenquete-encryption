@@ -72,5 +72,12 @@
     return [answers, errors, global.MijnFlow.skipped(questions, links, values)];
   }
 
-  global.MijnSurvey = { collect: collect };
+  /* An encrypted answer and its copies for collaborators go in one post, and post_max_size is 6M: a post that is larger
+     arrives empty and the answer is lost. Copies are added only while the whole stays under this many characters; the
+     owner's back-fill brings the ones left out. */
+  var COPY_BUDGET = 5000000;
+  /** Whether a copy of copyLength still fits after used characters (the answer and the copies so far). */
+  function copyFits(used, copyLength) { return used + copyLength < COPY_BUDGET; }
+
+  global.MijnSurvey = { collect: collect, copyFits: copyFits, COPY_BUDGET: COPY_BUDGET };
 })(typeof window !== 'undefined' ? window : this);
