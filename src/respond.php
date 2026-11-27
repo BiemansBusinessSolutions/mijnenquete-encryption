@@ -345,6 +345,15 @@ function email_gate_step(string $kind, bool $allowed, bool $answered): string
 }
 
 /**
+ * What the gate page gets. The defaults come last: with +, the first array that has a key wins, so
+ * defaults in front would drop the typed address, and the code form would post it back empty.
+ */
+function email_gate_vars(array $base, string $state, array $more = []): array
+{
+    return ['state' => $state] + $more + $base + ['email' => '', 'error' => null];
+}
+
+/**
  * The gate in front of a survey for allowed addresses only. Returns the unlock token once the visitor
  * typed a right code; otherwise shows the page for the step they are at, and does not return.
  */
@@ -352,7 +361,7 @@ function email_gate(array $survey, array $owner, array $base): string
 {
     $id = (int)$survey['id'];
     $view = fn(string $state, array $more = [], int $status = 200) =>
-        view('survey-email', $base + ['state' => $state, 'email' => '', 'error' => null] + $more, 'survey', $status);
+        view('survey-email', email_gate_vars($base, $state, $more), 'survey', $status);
     // Mail costs money: only a premium survey sends codes. Without that it stays shut, never open to all.
     if (!premium_active($survey, $owner)) $view('unavailable');
 

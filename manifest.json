@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceRevision": "37b439bc4c9c8e6566ad8a1b1495ed525c7d35a0",
+  "sourceRevision": "ac92bc33040fcef11daf3622e4ae405e3d06492b",
   "preview": false,
   "files": {
     ".gitattributes": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992",
@@ -16,7 +16,7 @@
     "SECURITY.md": "83675e7103bcd28c9eb4829725b7f8c15e0410279d9eea013b6fdbb22bdf18f9",
     "src/e2e.php": "c9631a753089da1f1904365921552ee8831b6879de21f7517c0ad7ac9c40e04a",
     "src/pages/encryption.php": "b39dadb8924d2143166a1d2235a3697eb867a517a7d226a8344efdbafc43c0c4",
-    "src/respond.php": "5cb6eebfb3d662d90bbf3b57d1495b5a8271ec8cb74209bec4fb9f2a75bc3dc7",
+    "src/respond.php": "337126400d54a1f45e5d49be9db590bd7c3926f78e81188e59cee02760d9ad9e",
     "src/views/survey.php": "716faa18d6b22c668be9c645bcee567dd0dbacfdf314159d7dd694d0d3777bd8",
     "tests/encryption.test.cjs": "b7a9dbba5ccedaf3fd7a9dde171d488f9568d8c83b22cdd1abdceecdef2ccac7",
     "tests/survey-collect.test.cjs": "6a99e49bc97bef49529c81a266e6e98ae5c9aa9edfd50f80292e707c7fe7b1e2"
